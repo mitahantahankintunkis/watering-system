@@ -49,7 +49,7 @@ bool watering = false;
 // I don't trust the motor I have to run continously, so I'll
 // switch it on and off in 15s intervals
 size_t motor_pulse_duration = 15 * 1000;
-size_t sleep_duration = 5 * 60 * 1000;
+size_t sleep_duration = 15 * 60 * 1000;
 size_t state_begin = 0;
 
 
@@ -103,6 +103,9 @@ void parse_commands() {
         BTSerial.println("        wake_up");
         BTSerial.println("            Wakes up from sleep mode");
         BTSerial.println("");
+        BTSerial.println("        force_water");
+        BTSerial.println("            Waters the plants without checking anything");
+        BTSerial.println("");
         BTSerial.println("        set_moisture_threshold (num)");
         BTSerial.println("            Sets at which soil moisture level the watering starts");
         BTSerial.println("");
@@ -114,6 +117,9 @@ void parse_commands() {
 
     } else if (string_starts_with(input_buffer, "wake_up")) {
         state = MEASURE_SOIL_MOISTURE;
+
+    } else if (string_starts_with(input_buffer, "force_water")) {
+        state = WATER_PLANTS;
 
     } else if (string_starts_with(input_buffer, "set_moisture_threshold")) {
         int a;
