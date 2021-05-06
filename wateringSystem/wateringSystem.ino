@@ -18,14 +18,18 @@ int moisture_level = 0;
 int water_level = 0;
 
 // Threshold values for triggering different events
-int water_level_threshold = 25;
+int water_level_threshold = 30;
 int moisture_level_threshold = 700;
 int moisture_level_range = 64;
 
 // Sensor measurement variables
-unsigned long measure_interval = 200;
+unsigned long measure_interval = 200ul;
 int measure_repeats = 5;
 int current_repeats = 0;
+
+// Limits the amount of times the motor can run per a sleep cycle
+int watering_repeats = 5;
+int current_watering_repeats = 0;
 
 
 // Different program states
@@ -46,9 +50,9 @@ bool watering = false;
 
 // Timing variables
 
-unsigned long watering_duration = 30 * 1000;
-unsigned long motor_cooldown_duration = 75 * 1000;
-unsigned long sleep_duration = 15 * 60 * 1000;
+unsigned long watering_duration = 30ul * 1000ul;
+unsigned long motor_cooldown_duration = 75ul * 1000ul;
+unsigned long sleep_duration = 15ul * 60ul * 1000ul;
 unsigned long state_begin = 0;
 
 
@@ -75,15 +79,15 @@ void parse_commands() {
     // TODO - convert these into a loop in case there will be more commands
     if (string_starts_with(input_buffer, "status")) {
         unsigned long dt = millis() - state_begin;
-        unsigned long minutes = dt / (60 * 1000);
-        unsigned long seconds = dt / (1000) - minutes * 60;
+        unsigned long mins = dt / (60ul * 1000ul);
+        unsigned long secs = dt / (1000ul) - mins * 60ul;
 
         BTSerial.println("Status:");
 
         BTSerial.print("    Time in current state:  ");
-        BTSerial.print(minutes);
+        BTSerial.print(mins);
         BTSerial.print("m ");
-        BTSerial.print(seconds);
+        BTSerial.print(secs);
         BTSerial.println("s");
 
         BTSerial.print("    Soil moisture sensor:  ");
@@ -135,6 +139,7 @@ void parse_commands() {
     } else if (string_starts_with(input_buffer, "force_water")) {
         state_begin = millis();
         current_repeats = 0;
+        current_watering_repeats = 0;
         state = WATER_PLANTS;
 
     } else if (string_starts_with(input_buffer, "sleep")) {
@@ -201,6 +206,8 @@ ProgramState sleep() {
     // Failsafe
     digitalWrite(motor_pin, LOW);
     watering = false;
+    current_watering_repeats = 0;
+    current_repeats = 0;
 
     if (dt >= sleep_duration) {
         BTSerial.println("Measuring soil moisture");
@@ -222,6 +229,7 @@ ProgramState measure_soil_moisture() {
 
     if (dt >= measure_interval) {
         moisture_level += analogRead(moisture_sensor_pin);
+        state_begin = millis();
         ++current_repeats;
     }
 
@@ -266,6 +274,7 @@ ProgramState check_water_level() {
 
     if (dt >= measure_interval) {
         water_level += analogRead(water_level_pin);
+        state_begin = millis();
         ++current_repeats;
     }
 
@@ -294,10 +303,23 @@ ProgramState water_plants() {
     unsigned long dt = millis() - state_begin;
     watering = true;
 
+    // Limits the amount of times this state can be ran each sleep cycle
+    if (current_watering_repeats >= watering_repeats) {
+        BTSerial.println("Soil is still too dry, going to sleep");
+
+        current_watering_repeats = 0;
+        watering = false;
+        digitalWrite(motor_pin, LOW);
+
+        return SLEEP;
+    }
+
     digitalWrite(motor_pin, HIGH);
 
     if (dt >= watering_duration) {
         digitalWrite(motor_pin, LOW);
+        ++current_watering_repeats;
+
         BTSerial.println("Cooling the motor down");
 
         return MOTOR_COOLDOWN;
